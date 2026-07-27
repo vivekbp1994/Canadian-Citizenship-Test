@@ -99,19 +99,20 @@ h1.title{font-size:clamp(30px,7vw,46px); line-height:1.02; font-weight:900; lett
 .setup{margin-top:30px; padding:26px 24px}
 .setup .q-label{font-weight:800; font-size:18px; letter-spacing:-.01em}
 .setup .hint{color:var(--slate); font-size:13.5px; margin-top:6px}
-.range-row{display:flex; align-items:stretch; gap:12px; margin-top:20px; flex-wrap:wrap}
-.num-field{position:relative; flex:1 1 150px}
+.range-row{display:flex; align-items:flex-end; gap:12px; margin-top:20px}
+.num-field{position:relative; flex:1 1 0; min-width:0}
+.num-field .fld-tag{display:block; font-family:var(--font-m); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--slate); margin:0 0 7px 2px}
 .num-field input{
   width:100%; font-family:var(--font-m); font-weight:700; font-size:30px; color:var(--ink);
   background:var(--snow); border:1.5px solid var(--line-strong); border-radius:12px;
   padding:14px 16px 14px 16px; text-align:left;
 }
 .num-field input:focus{outline:none; border-color:var(--red); background:var(--paper)}
-.num-field .of{position:absolute; right:16px; top:50%; transform:translateY(-50%); font-family:var(--font-m); font-size:12px; color:var(--slate)}
-.presets{display:flex; gap:8px; flex-wrap:wrap}
+.range-row .dash{font-family:var(--font-m); font-size:22px; color:var(--slate); padding-bottom:16px; flex:none}
+.presets{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px}
 .chip{
-  font-family:var(--font-m); font-size:13px; font-weight:700; padding:0 16px; height:100%;
-  min-height:60px; border:1.5px solid var(--line); background:var(--paper); border-radius:12px; color:var(--ink-soft);
+  font-family:var(--font-m); font-size:13px; font-weight:700; padding:11px 15px;
+  border:1.5px solid var(--line); background:var(--paper); border-radius:11px; color:var(--ink-soft);
   transition:.15s; display:inline-flex; align-items:center;
 }
 .chip:hover{border-color:var(--red); color:var(--red)}
@@ -265,17 +266,26 @@ h1.title{font-size:clamp(30px,7vw,46px); line-height:1.02; font-weight:900; lett
     </div>
 
     <div class="card setup">
-      <div class="q-label">Up to which question number have you prepared?</div>
-      <div class="hint">Your round will draw a random mix from question 1 through the number you pick.</div>
+      <div class="q-label">Which range of questions do you want to practise?</div>
+      <div class="hint">Your round draws a random mix from every question between (and including) the two numbers.</div>
       <div class="range-row">
         <label class="num-field">
-          <input type="number" id="prepInput" min="1" max="414" value="50" inputmode="numeric" aria-label="Highest question number studied">
-          <span class="of">of 414</span>
+          <span class="fld-tag">From</span>
+          <input type="number" id="fromInput" min="1" max="414" value="1" inputmode="numeric" aria-label="Starting question number">
         </label>
-        <button class="chip" data-preset="50">First 50</button>
-        <button class="chip" data-preset="100">100</button>
-        <button class="chip" data-preset="200">200</button>
-        <button class="chip" data-preset="414">All 414</button>
+        <span class="dash" aria-hidden="true">&ndash;</span>
+        <label class="num-field">
+          <span class="fld-tag">To</span>
+          <input type="number" id="toInput" min="1" max="414" value="50" inputmode="numeric" aria-label="Ending question number">
+        </label>
+      </div>
+      <div class="presets">
+        <button class="chip" data-from="1" data-to="50">1&ndash;50</button>
+        <button class="chip" data-from="1" data-to="100">1&ndash;100</button>
+        <button class="chip" data-from="101" data-to="200">101&ndash;200</button>
+        <button class="chip" data-from="201" data-to="300">201&ndash;300</button>
+        <button class="chip" data-from="301" data-to="414">301&ndash;414</button>
+        <button class="chip" data-from="1" data-to="414">All 414</button>
       </div>
       <div class="err" id="startErr"></div>
       <button class="btn btn-primary btn-full" id="startBtn">Start round &rarr;</button>
@@ -364,19 +374,20 @@ function shuffle(arr){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
   return a;
 }
-function shuffledNumbers(upTo){
-  const pool=[]; for(let n=1;n<=upTo;n++) pool.push(n);
+function shuffledNumbers(from,to){
+  const pool=[]; for(let n=from;n<=to;n++) pool.push(n);
   if(pool.length<2) return pool;
   let out=shuffle(pool), guard=0;
-  while(guard++<12 && out.every((v,i)=>v===pool[i])) out=shuffle(pool); // must differ from source order
+  while(guard++<20 && out.every((v,i)=>v===pool[i])) out=shuffle(pool); // must differ from source order
+  if(out.every((v,i)=>v===pool[i])) out.unshift(out.pop()); // deterministic fallback: rotate so it can never match source order
   return out;
 }
 
 /* ---------- session ---------- */
 let session=null;
 
-function startRound(upTo){
-  session={ prepared:upTo, qnums:shuffledNumbers(upTo), answers:[], pos:0, done:false };
+function startRound(from,to){
+  session={ from:from, to:to, qnums:shuffledNumbers(from,to), answers:[], pos:0, done:false };
   session.qnums.forEach(()=>session.answers.push(null));
   save(); showQuiz(); renderQuestion();
 }
@@ -536,24 +547,27 @@ document.getElementById('toggleReviewBtn').addEventListener('click',()=>buildRev
 document.getElementById('restartBtn').addEventListener('click',()=>{ clearSaved(); session=null; show('start'); refreshResume(); window.scrollTo({top:0,behavior:'smooth'}); });
 
 /* ---------- start form ---------- */
-const prep=document.getElementById('prepInput');
+const fromIn=document.getElementById('fromInput');
+const toIn=document.getElementById('toInput');
 const startErr=document.getElementById('startErr');
 document.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{
-  prep.value=ch.dataset.preset; syncChips(); startErr.textContent='';
+  fromIn.value=ch.dataset.from; toIn.value=ch.dataset.to; syncChips(); startErr.textContent='';
 }));
-function syncChips(){ document.querySelectorAll('.chip').forEach(ch=>ch.classList.toggle('on',ch.dataset.preset===String(prep.value))); }
-prep.addEventListener('input',()=>{ syncChips(); startErr.textContent=''; });
+function syncChips(){ document.querySelectorAll('.chip').forEach(ch=>
+  ch.classList.toggle('on', ch.dataset.from===String(fromIn.value) && ch.dataset.to===String(toIn.value))); }
+[fromIn,toIn].forEach(el=>el.addEventListener('input',()=>{ syncChips(); startErr.textContent=''; }));
 syncChips();
 
 function validateStart(){
-  let v=parseInt(prep.value,10);
-  if(isNaN(v)){ startErr.textContent='Enter a question number between 1 and '+TOTAL_AVAILABLE+'.'; return null; }
-  if(v<1){ startErr.textContent='Pick at least 1 question.'; return null; }
-  if(v>TOTAL_AVAILABLE){ startErr.textContent='There are only '+TOTAL_AVAILABLE+' questions available.'; return null; }
-  return v;
+  const a=parseInt(fromIn.value,10), b=parseInt(toIn.value,10);
+  if(isNaN(a)||isNaN(b)){ startErr.textContent='Enter both a start and an end question number.'; return null; }
+  if(a<1||b<1){ startErr.textContent='Question numbers start at 1.'; return null; }
+  if(a>TOTAL_AVAILABLE||b>TOTAL_AVAILABLE){ startErr.textContent='There are only '+TOTAL_AVAILABLE+' questions available.'; return null; }
+  if(a>b){ startErr.textContent='The start number can\u2019t be higher than the end number.'; return null; }
+  return {from:a,to:b};
 }
-document.getElementById('startBtn').addEventListener('click',()=>{ const v=validateStart(); if(v) startRound(v); });
-prep.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const v=validateStart(); if(v) startRound(v); } });
+document.getElementById('startBtn').addEventListener('click',()=>{ const r=validateStart(); if(r) startRound(r.from,r.to); });
+[fromIn,toIn].forEach(el=>el.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const r=validateStart(); if(r) startRound(r.from,r.to); } }));
 
 /* ---------- resume banner ---------- */
 function refreshResume(){
@@ -561,7 +575,8 @@ function refreshResume(){
   const banner=document.getElementById('resumeBanner');
   if(s && !s.done && s.answers && s.answers.some(a=>a!=null)){
     const att=s.answers.filter(a=>a!=null).length;
-    document.getElementById('resumeMeta').textContent='Prepared to Q'+s.prepared+' \u00b7 '+att+' of '+s.qnums.length+' answered';
+    const rangeTxt = (s.from!=null&&s.to!=null) ? ('Q'+s.from+'\u2013Q'+s.to) : ('up to Q'+(s.prepared||'?'));
+    document.getElementById('resumeMeta').textContent=rangeTxt+' \u00b7 '+att+' of '+s.qnums.length+' answered';
     banner.classList.remove('hidden');
   } else banner.classList.add('hidden');
 }
